@@ -29,17 +29,19 @@ export default function Login() {
         <div className="auth-header">
           <div className="auth-logo">📊</div>
           <h1>Employee Analytics</h1>
-          <p>Sign in to your account</p>
+          <p>Sign in to your HR dashboard</p>
         </div>
+
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Email</label>
+            <label>Email Address</label>
             <input
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="you@example.com"
+              placeholder="you@company.com"
               required
+              autoComplete="email"
             />
           </div>
           <div className="form-group">
@@ -50,20 +52,25 @@ export default function Login() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               placeholder="••••••••"
               required
+              autoComplete="current-password"
             />
           </div>
+
           <button
             type="submit"
             className="btn btn-primary btn-full"
             disabled={loading}
+            style={{ marginTop: 4, padding: "12px" }}
           >
-            {loading ? (
-              <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Signing in...</>
-            ) : "Sign In"}
+            {loading
+              ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderTopColor: "#fff" }} /> Signing in...</>
+              : "Sign In →"
+            }
           </button>
         </form>
+
         <p className="auth-switch">
-          Don't have an account? <Link to="/signup">Sign up</Link>
+          Don't have an account? <Link to="/signup">Create one</Link>
         </p>
       </div>
     </div>
