@@ -65,14 +65,16 @@ Respond in this exact JSON format:
   "summary": "2-3 sentence overall team summary"
 }`;
 
+    const apiKey = (process.env.OPENROUTER_API_KEY || "").trim();
+
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": process.env.FRONTEND_URL || "http://localhost:5174",
+          "HTTP-Referer": (process.env.FRONTEND_URL || "http://localhost:5174").trim(),
           "X-Title": "Employee Performance Analytics",
         },
         body: JSON.stringify({
