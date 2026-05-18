@@ -1,12 +1,91 @@
 const Employee = require("../models/Employee");
 const fetch = require("node-fetch");
 
+// Build a type-specific prompt with a different response schema per analysis type
+const buildPrompt = (type, employeeList) => {
+  switch (type) {
+    case "promotion":
+      return {
+        instruction: `You are an HR analytics AI. Evaluate each employee strictly for promotion eligibility based on their performance score, experience, and skills.`,
+        format: `{
+  "analysis": [
+    {
+      "name": "Employee Name",
+      "promotionRecommendation": "Recommended / Not Recommended / Under Review",
+      "promotionReason": "2-3 sentence justification focusing on performance score and experience",
+      "readinessScore": 85
+    }
+  ],
+  "summary": "Overall promotion pipeline summary in 2-3 sentences"
+}`,
+      };
+
+    case "training":
+      return {
+        instruction: `You are an HR learning & development AI. For each employee, identify skill gaps and suggest specific, actionable training programs to improve their performance.`,
+        format: `{
+  "analysis": [
+    {
+      "name": "Employee Name",
+      "currentLevel": "Junior / Mid / Senior",
+      "skillGaps": ["Gap 1", "Gap 2"],
+      "trainingSuggestions": ["Course/Program 1", "Course/Program 2", "Course/Program 3"],
+      "priority": "High / Medium / Low",
+      "trainingNote": "1-2 sentence note on why this training is important for this employee"
+    }
+  ],
+  "summary": "Overall team training needs summary in 2-3 sentences"
+}`,
+      };
+
+    case "ranking":
+      return {
+        instruction: `You are an HR analytics AI. Rank ALL employees from best to worst performer. Consider performance score, experience, and skill breadth. Be decisive — no ties.`,
+        format: `{
+  "analysis": [
+    {
+      "name": "Employee Name",
+      "rank": 1,
+      "performanceLabel": "Excellent / Good / Average / Needs Improvement",
+      "rankingJustification": "2 sentence justification for this rank position",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1"]
+    }
+  ],
+  "summary": "2-3 sentence summary of the overall team performance distribution"
+}`,
+      };
+
+    case "full":
+    default:
+      return {
+        instruction: `You are an HR analytics AI. Perform a comprehensive 360-degree analysis of each employee covering promotion readiness, training needs, and overall performance feedback.`,
+        format: `{
+  "analysis": [
+    {
+      "name": "Employee Name",
+      "rank": 1,
+      "performanceLabel": "Excellent / Good / Average / Needs Improvement",
+      "promotionRecommendation": "Recommended / Not Recommended / Under Review",
+      "promotionReason": "Brief reason",
+      "trainingSuggestions": ["Suggestion 1", "Suggestion 2"],
+      "strengths": ["Strength 1", "Strength 2"],
+      "aiFeedback": "Overall 2-3 sentence performance feedback"
+    }
+  ],
+  "summary": "2-3 sentence overall team summary"
+}`,
+      };
+  }
+};
+
 // POST /api/ai/recommend
 const getRecommendations = async (req, res, next) => {
   try {
     const { employeeIds, department, analysisType } = req.body;
+    const type = analysisType || "full";
 
-    // Fetch employees — either specific ones or all (optionally filtered by dept)
+    // Fetch employees
     let employees;
     if (employeeIds && employeeIds.length > 0) {
       employees = await Employee.find({ _id: { $in: employeeIds } });
@@ -26,8 +105,6 @@ const getRecommendations = async (req, res, next) => {
       });
     }
 
-    const type = analysisType || "full"; // full | promotion | training | ranking
-
     const employeeList = employees
       .map(
         (e, i) =>
@@ -35,35 +112,15 @@ const getRecommendations = async (req, res, next) => {
       )
       .join("\n");
 
-    const prompts = {
-      promotion: `You are an HR analytics AI. Based on the following employee data, identify who should be considered for promotion and why.`,
-      training: `You are an HR analytics AI. Based on the following employee data, suggest personalized training programs for each employee to improve their performance.`,
-      ranking: `You are an HR analytics AI. Rank the following employees from best to worst performer and justify each ranking.`,
-      full: `You are an HR analytics AI. Perform a comprehensive analysis of the following employees. For each employee provide: promotion readiness, training suggestions, and an overall performance feedback.`,
-    };
+    const { instruction, format } = buildPrompt(type, employeeList);
 
-    const systemPrompt = prompts[type] || prompts.full;
-
-    const prompt = `${systemPrompt}
+    const prompt = `${instruction}
 
 Employee Data:
 ${employeeList}
 
-Respond in this exact JSON format:
-{
-  "analysis": [
-    {
-      "name": "Employee Name",
-      "rank": 1,
-      "promotionRecommendation": "Recommended / Not Recommended / Under Review",
-      "promotionReason": "Brief reason",
-      "trainingSuggestions": ["Suggestion 1", "Suggestion 2"],
-      "aiFeedback": "Overall 2-3 sentence performance feedback",
-      "performanceLabel": "Excellent / Good / Average / Needs Improvement"
-    }
-  ],
-  "summary": "2-3 sentence overall team summary"
-}`;
+Respond ONLY in this exact JSON format (no extra text, no markdown):
+${format}`;
 
     const apiKey = (process.env.OPENROUTER_API_KEY || "").trim();
 
@@ -80,7 +137,7 @@ Respond in this exact JSON format:
         body: JSON.stringify({
           model: "meta-llama/llama-3.3-70b-instruct",
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.3,
+          temperature: 0.4,
         }),
       }
     );
@@ -109,6 +166,7 @@ Respond in this exact JSON format:
         success: true,
         data: { raw: rawContent, parseError: true },
         employees,
+        analysisType: type,
       });
     }
 
@@ -131,6 +189,7 @@ Respond in this exact JSON format:
     res.json({
       success: true,
       count: merged.length,
+      analysisType: type,
       data: merged,
       summary: aiResult.summary,
     });
