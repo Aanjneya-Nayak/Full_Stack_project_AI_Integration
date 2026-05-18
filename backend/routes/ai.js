@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const { aiShortlist } = require("../controllers/aiController");
+const { getRecommendations } = require("../controllers/aiController");
+const { protect } = require("../middleware/authMiddleware");
 
-router.post("/shortlist", aiShortlist);
+router.post("/recommend", protect, getRecommendations);
 
 module.exports = router;

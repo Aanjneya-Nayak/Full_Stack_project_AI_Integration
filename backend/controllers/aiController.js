@@ -1,82 +1,68 @@
-const Candidate = require("../models/Candidate");
+const Employee = require("../models/Employee");
 const fetch = require("node-fetch");
 
-// POST /api/ai/shortlist — AI-based candidate ranking via OpenRouter
-const aiShortlist = async (req, res) => {
+// POST /api/ai/recommend
+const getRecommendations = async (req, res, next) => {
   try {
-    const { requiredSkills, minExperience, preferredSkills, jobDescription } =
-      req.body;
+    const { employeeIds, department, analysisType } = req.body;
 
-    if (!requiredSkills || requiredSkills.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "requiredSkills is required" });
+    // Fetch employees — either specific ones or all (optionally filtered by dept)
+    let employees;
+    if (employeeIds && employeeIds.length > 0) {
+      employees = await Employee.find({ _id: { $in: employeeIds } });
+    } else if (department) {
+      employees = await Employee.find({
+        department: { $regex: department, $options: "i" },
+      });
+    } else {
+      employees = await Employee.find().sort({ performanceScore: -1 });
     }
 
-    const minExp = minExperience || 0;
-
-    // Fetch candidates meeting minimum experience
-    const candidates = await Candidate.find({
-      experience: { $gte: minExp },
-    });
-
-    if (candidates.length === 0) {
+    if (employees.length === 0) {
       return res.json({
         success: true,
-        message: "No candidates meet the minimum experience requirement",
-        data: [],
-        aiAnalysis: null,
+        message: "No employees found for analysis",
+        data: null,
       });
     }
 
-    // Build candidate list string for the prompt
-    const candidateList = candidates
+    const type = analysisType || "full"; // full | promotion | training | ranking
+
+    const employeeList = employees
       .map(
-        (c, i) =>
-          `${i + 1}. ${c.name} | Skills: ${c.skills.join(", ")} | Experience: ${c.experience} year(s)${c.bio ? ` | Bio: ${c.bio}` : ""}`
+        (e, i) =>
+          `${i + 1}. ${e.name} | Dept: ${e.department} | Skills: ${e.skills.join(", ")} | Performance Score: ${e.performanceScore}/100 | Experience: ${e.experience} year(s)`
       )
       .join("\n");
 
-    const preferredNote =
-      preferredSkills && preferredSkills.length > 0
-        ? `Preferred skills: ${preferredSkills.join(", ")}.`
-        : "";
+    const prompts = {
+      promotion: `You are an HR analytics AI. Based on the following employee data, identify who should be considered for promotion and why.`,
+      training: `You are an HR analytics AI. Based on the following employee data, suggest personalized training programs for each employee to improve their performance.`,
+      ranking: `You are an HR analytics AI. Rank the following employees from best to worst performer and justify each ranking.`,
+      full: `You are an HR analytics AI. Perform a comprehensive analysis of the following employees. For each employee provide: promotion readiness, training suggestions, and an overall performance feedback.`,
+    };
 
-    const jobDescNote = jobDescription
-      ? `Job Description: ${jobDescription}`
-      : "";
+    const systemPrompt = prompts[type] || prompts.full;
 
-    const prompt = `You are a technical recruiter AI. Analyze the following candidates for a job opening and rank them.
+    const prompt = `${systemPrompt}
 
-Job Requirements:
-- Required Skills: ${requiredSkills.join(", ")}
-- Minimum Experience: ${minExp} year(s)
-${preferredNote}
-${jobDescNote}
-
-Candidates:
-${candidateList}
-
-Instructions:
-1. Rank ALL candidates from best to worst fit.
-2. For each candidate provide:
-   - Rank number
-   - Name
-   - Match tier: High / Medium / Low
-   - A brief 1-2 sentence explanation of why they are or aren't a good fit
-3. At the end, provide a 2-3 sentence overall summary of the best candidates.
+Employee Data:
+${employeeList}
 
 Respond in this exact JSON format:
 {
-  "rankings": [
+  "analysis": [
     {
+      "name": "Employee Name",
       "rank": 1,
-      "name": "Candidate Name",
-      "tier": "High",
-      "explanation": "Explanation here"
+      "promotionRecommendation": "Recommended / Not Recommended / Under Review",
+      "promotionReason": "Brief reason",
+      "trainingSuggestions": ["Suggestion 1", "Suggestion 2"],
+      "aiFeedback": "Overall 2-3 sentence performance feedback",
+      "performanceLabel": "Excellent / Good / Average / Needs Improvement"
     }
   ],
-  "summary": "Overall summary here"
+  "summary": "2-3 sentence overall team summary"
 }`;
 
     const response = await fetch(
@@ -86,8 +72,8 @@ Respond in this exact JSON format:
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "http://localhost:5174",
-          "X-Title": "Candidate Shortlisting System",
+          "HTTP-Referer": process.env.FRONTEND_URL || "http://localhost:5174",
+          "X-Title": "Employee Performance Analytics",
         },
         body: JSON.stringify({
           model: "meta-llama/llama-3.3-70b-instruct",
@@ -110,51 +96,45 @@ Respond in this exact JSON format:
     const aiData = await response.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
-    // Parse JSON from AI response (handle markdown code blocks if present)
+    // Parse JSON from AI response
     let aiResult;
     try {
       const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found in AI response");
+      if (!jsonMatch) throw new Error("No JSON in AI response");
       aiResult = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      // If parsing fails, return raw text so frontend can still display it
+    } catch {
       return res.json({
         success: true,
-        data: candidates,
-        aiAnalysis: { raw: rawContent, parseError: true },
+        data: { raw: rawContent, parseError: true },
+        employees,
       });
     }
 
-    // Merge AI rankings with candidate data
-    const rankedCandidates = aiResult.rankings
-      .map((ranking) => {
-        const candidate = candidates.find(
-          (c) => c.name.toLowerCase() === ranking.name.toLowerCase()
-        );
-        return {
-          rank: ranking.rank,
-          _id: candidate?._id,
-          name: ranking.name,
-          email: candidate?.email,
-          skills: candidate?.skills || [],
-          experience: candidate?.experience,
-          bio: candidate?.bio,
-          tier: ranking.tier,
-          aiExplanation: ranking.explanation,
-        };
-      })
-      .filter((c) => c._id); // only include matched candidates
+    // Merge AI analysis with employee DB data
+    const merged = aiResult.analysis.map((item) => {
+      const emp = employees.find(
+        (e) => e.name.toLowerCase() === item.name.toLowerCase()
+      );
+      return {
+        ...item,
+        _id: emp?._id,
+        email: emp?.email,
+        department: emp?.department,
+        skills: emp?.skills,
+        performanceScore: emp?.performanceScore,
+        experience: emp?.experience,
+      };
+    });
 
     res.json({
       success: true,
-      count: rankedCandidates.length,
-      data: rankedCandidates,
+      count: merged.length,
+      data: merged,
       summary: aiResult.summary,
     });
   } catch (err) {
-    console.error("AI shortlist error:", err.message);
-    res.status(500).json({ success: false, message: err.message });
+    next(err);
   }
 };
 
-module.exports = { aiShortlist };
+module.exports = { getRecommendations };

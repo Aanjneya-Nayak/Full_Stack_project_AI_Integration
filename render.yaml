@@ -12,11 +12,11 @@ services:
       - key: PORT
         value: 10000
       - key: MONGO_URI
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: OPENROUTER_API_KEY
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: FRONTEND_URL
-        sync: false          # set to your Render static site URL after deploy
+        sync: false
 
   # ── Frontend: React Static Site ───────────────────────────────────────────
   - type: web
@@ -24,10 +24,14 @@ services:
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        sync: false          # set to your Render backend URL after deploy
+        sync: false
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
     routes:
       - type: rewrite
         source: /*

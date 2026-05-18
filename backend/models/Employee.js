@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
 
-const CandidateSchema = new mongoose.Schema({
+const EmployeeSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, "Name is required"],
+    required: [true, "Employee name is required"],
     trim: true,
   },
   email: {
@@ -11,6 +11,11 @@ const CandidateSchema = new mongoose.Schema({
     required: [true, "Email is required"],
     unique: true,
     lowercase: true,
+    trim: true,
+  },
+  department: {
+    type: String,
+    required: [true, "Department is required"],
     trim: true,
   },
   skills: {
@@ -21,15 +26,16 @@ const CandidateSchema = new mongoose.Schema({
       message: "Skills array cannot be empty",
     },
   },
+  performanceScore: {
+    type: Number,
+    required: [true, "Performance score is required"],
+    min: [0, "Score cannot be less than 0"],
+    max: [100, "Score cannot exceed 100"],
+  },
   experience: {
     type: Number,
     required: [true, "Experience is required"],
     min: [0, "Experience cannot be negative"],
-  },
-  bio: {
-    type: String,
-    default: "",
-    trim: true,
   },
   createdAt: {
     type: Date,
@@ -37,4 +43,4 @@ const CandidateSchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model("Candidate", CandidateSchema);
+module.exports = mongoose.model("Employee", EmployeeSchema);
