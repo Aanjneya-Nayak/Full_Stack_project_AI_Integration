@@ -1,7 +1,7 @@
 services:
   # ── Backend: Node/Express API ──────────────────────────────────────────────
   - type: web
-    name: candidate-shortlisting-api
+    name: employee-analytics-api
     runtime: node
     rootDir: backend
     buildCommand: npm install
@@ -12,22 +12,24 @@ services:
       - key: PORT
         value: 10000
       - key: MONGO_URI
-        sync: false
+        sync: false          # Set in Render dashboard
       - key: OPENROUTER_API_KEY
-        sync: false
+        sync: false          # Set in Render dashboard
+      - key: JWT_SECRET
+        sync: false          # Set in Render dashboard
       - key: FRONTEND_URL
-        sync: false
+        sync: false          # Set to your Render frontend URL e.g. https://employee-analytics-ui.onrender.com
 
   # ── Frontend: React Static Site ───────────────────────────────────────────
   - type: web
-    name: candidate-shortlisting-ui
+    name: employee-analytics-ui
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        sync: false
+        sync: false          # Set to your Render backend URL e.g. https://employee-analytics-api.onrender.com
     headers:
       - path: /*
         name: Cache-Control
